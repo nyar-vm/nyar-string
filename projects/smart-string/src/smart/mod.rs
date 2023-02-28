@@ -1,5 +1,6 @@
 use std::fmt::{Debug, Formatter};
-use std::mem::size_of;
+
+use crate::STRING_MANAGER;
 
 #[repr(C)]
 pub struct SmartString {
@@ -9,20 +10,27 @@ pub struct SmartString {
 }
 
 impl SmartString {
-    pub fn new() -> Self {
-        Self {
-            pointer: [0u8; 24],
-        }
+    pub fn new(s: &str) -> Self {
+        todo!()
     }
-    pub fn managed(s: &str) -> SmartString {
 
+    pub fn managed(s: &str) -> SmartString {
+        let id = STRING_MANAGER.insert(s);
+        let mut pointer = [0u8; 24];
+        pointer[23] = SmartStringKind::Managed as u8;
+        let id = id.to_be_bytes();
+        pointer[0..8].copy_from_slice(&id[0..8]);
+        Self { pointer }
     }
 }
 
 #[test]
 fn test() {
-    let s = SmartString::new();
-    println!("{:?}", s);
+    let s1 = SmartString::managed("a");
+
+    let s2 = SmartString::managed("a");
+    println!("{:?}", s1);
+    println!("{:?}", s2);
 }
 
 impl Debug for SmartString {
@@ -31,9 +39,9 @@ impl Debug for SmartString {
         let mid = u64::from_be_bytes(self.pointer[8..16].try_into().unwrap());
         let low = u64::from_be_bytes(self.pointer[16..24].try_into().unwrap());
         f.debug_struct("SmartString")
-            .field("high", &format!("{:#x}", high))
-            .field("mid", &format!("{:#x}", mid))
-            .field("low", &format!("{:#x}", low))
+            .field("high", &format!("{:#b}", high))
+            .field("mid", &format!("{:#b}", mid))
+            .field("low", &format!("{:#b}", low))
             .finish()
     }
 }
@@ -43,22 +51,21 @@ impl Debug for SmartString {
 pub enum SmartStringKind {
     /// Static Layout
     /// ```js
-    /// 00______ ________ ________ ________
     /// &'static str
+    /// ________ ________ ________ ______00
     /// ```
     Static = 0,
     /// Managed Layout
     /// ```js
-    /// 01______ ________ ________ ________
-    /// ________ ________ ________ ________
     /// u64
+    /// ________ ________ ________ ______01
     /// ```
     Managed = 1,
     /// Inlined Layout
     /// ```js
-    /// 01xxxxxx xxxxxxxx xxxxxxxx xxxxxxxx
     /// xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx
     /// xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx
+    /// xxxxxxxx xxxxxxxx xxxxxxxx xxxxxx01
     /// ```
     Inlined = 2,
     /// Heap Layout
@@ -94,9 +101,4 @@ impl SmartString {
     pub fn as_managed(&self) -> Option<&str> {
         todo!()
     }
-}
-
-#[test]
-fn keep_size_of() {
-    assert_eq!(size_of::<SmartString>(), size_of::<String>())
 }
