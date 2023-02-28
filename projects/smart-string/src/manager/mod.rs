@@ -7,7 +7,7 @@ use dashmap::mapref::one::Ref;
 
 pub static STRING_MANAGER: LazyLock<StringManager> = LazyLock::new(|| StringManager::default());
 
-pub type StringID = u64;
+pub type StringID = usize;
 
 pub struct StringManager {
     cache: DashMap<StringID, String, RandomState>,
@@ -30,7 +30,7 @@ impl StringManager {
         let mut hasher = AHasher::default();
         let s = value.into();
         s.hash(&mut hasher);
-        let hash = hasher.finish();
+        let hash = hasher.finish() as usize;
         if self.cache.contains_key(&hash) {
             return hash;
         }

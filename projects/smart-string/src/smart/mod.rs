@@ -1,73 +1,153 @@
 use std::fmt::{Debug, Formatter};
+use compact_str::CompactString;
+
+pub mod inlined;
 
 use crate::STRING_MANAGER;
 
+/// **Managed**: `Rc<String>`, `Arc<String>`
+///
+/// ```
+/// # use smart_string::SmartStringKind;
+/// pub struct SmartString {
+///     pointer: u64,
+///     length: u64,
+///     extra: [u8; 7],
+///     kind: SmartStringKind,
+/// }
+/// ```
 #[repr(C)]
+#[derive(Debug)]
 pub struct SmartString {
-    // 24 bytes, 192 bits
-    // [u64, u64, u64]
-    pointer: [u8; 24],
+    /// `*const ()`
+    pointer: usize,
+    /// length of the string
+    length: usize,
+    #[cfg(target_pointer_width = "64")]
+    fill32: u32,
+    fill16: u16,
+    fill8: u8,
+    kind: u8,
 }
 
+impl Debug for SmartStringKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SmartStringKind")
+            .field("kind", &self as &u8)
+            .finish()
+    }
+}
+
+impl Default for SmartString {
+    fn default() -> Self {
+        Self {
+            pointer: 0,
+            length: 0,
+            fill32: 0,
+            fill16: 0,
+            fill8: 0,
+            kind: SmartStringKind::Inlined as u8,
+        }
+    }
+}
+
+
 impl SmartString {
+    #[inline]
     pub fn new(s: &str) -> Self {
         todo!()
     }
-
+    #[inline]
     pub fn managed(s: &str) -> SmartString {
         let id = STRING_MANAGER.insert(s);
-        let mut pointer = [0u8; 24];
-        pointer[23] = SmartStringKind::Managed as u8;
-        let id = id.to_be_bytes();
-        pointer[0..8].copy_from_slice(&id[0..8]);
-        Self { pointer }
+        Self {
+            pointer: id,
+            length: s.len(),
+            fill32: 0,
+            fill16: 0,
+            fill8: 0,
+            kind: SmartStringKind::Managed as u8,
+        }
+    }
+    // 192 bits / (char = 8bits) = 24 chars
+    pub fn inlined(s: &str) -> Option<SmartString> {
+        if s.as_bytes().contains(&0) {
+            return None;
+        }
+        if s.chars().count() > 24 {
+            return None;
+        }
+        if s.len() > 8 {
+            return None;
+        }
+       CompactString::new_inline()
+        let inline = InlineBuffer::new_const(text);
+        Repr::from_inline(inline)
+    }
+    pub fn heap(s: &str) -> SmartString {
+        todo!()
+    }
+}
+
+impl SmartString {
+    #[inline(always)]
+    pub const fn kind(&self) -> SmartStringKind {
+        match self.kind {
+            0b00 => SmartStringKind::Inlined,
+            0b01 => SmartStringKind::Static,
+            0b10 => SmartStringKind::Managed,
+            0b11 => SmartStringKind::Heap,
+            _ => unreachable!(),
+        }
+    }
+    pub fn len(&self) -> usize {
+        match self.kind() {
+            SmartStringKind::Inlined => {
+                todo!()
+            }
+            SmartStringKind::Static => {
+                todo!()
+            }
+            SmartStringKind::Managed => {
+                todo!()
+            }
+            SmartStringKind::Heap => {
+                todo!()
+            }
+        }
     }
 }
 
 #[test]
 fn test() {
     let s1 = SmartString::managed("a");
-
     let s2 = SmartString::managed("a");
     println!("{:?}", s1);
     println!("{:?}", s2);
 }
 
-impl Debug for SmartString {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let high = u64::from_be_bytes(self.pointer[0..8].try_into().unwrap());
-        let mid = u64::from_be_bytes(self.pointer[8..16].try_into().unwrap());
-        let low = u64::from_be_bytes(self.pointer[16..24].try_into().unwrap());
-        f.debug_struct("SmartString")
-            .field("high", &format!("{:#b}", high))
-            .field("mid", &format!("{:#b}", mid))
-            .field("low", &format!("{:#b}", low))
-            .finish()
-    }
-}
-
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum SmartStringKind {
-    /// Static Layout
-    /// ```js
-    /// &'static str
-    /// ________ ________ ________ ______00
-    /// ```
-    Static = 0,
-    /// Managed Layout
-    /// ```js
-    /// u64
-    /// ________ ________ ________ ______01
-    /// ```
-    Managed = 1,
     /// Inlined Layout
     /// ```js
     /// xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx
     /// xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx
-    /// xxxxxxxx xxxxxxxx xxxxxxxx xxxxxx01
+    /// xxxxxxxx xxxxxxxx xxxxxxxx xxxxxx00
     /// ```
-    Inlined = 2,
+    Inlined = 0,
+    /// Static Layout
+    /// ```js
+    /// &'static str
+    /// ________ ________ ________ ______01
+    /// ```
+    Static = 1,
+    /// Managed Layout
+    /// ```js
+    /// u64
+    /// ________ ________ ________ ______10
+    /// ```
+    Managed = 2,
     /// Heap Layout
     /// ```js
     /// box
@@ -78,23 +158,11 @@ pub enum SmartStringKind {
 
 impl From<&'static str> for SmartString {
     fn from(s: &'static str) -> Self {
-        let mut pointer = [0u8; 24];
-        pointer[0] = SmartStringKind::Static as u8;
-        pointer[1..].copy_from_slice(s.as_bytes());
-        Self { pointer }
+        todo!()
     }
 }
 
 impl SmartString {
-    pub fn kind(&self) -> SmartStringKind {
-        match self.pointer[0] >> 6 {
-            0b00 => SmartStringKind::Static,
-            0b01 => SmartStringKind::Managed,
-            0b10 => SmartStringKind::Inlined,
-            0b11 => SmartStringKind::Heap,
-            _ => unreachable!(),
-        }
-    }
     pub unsafe fn as_static(&self) -> Option<&'static str> {
         todo!()
     }
