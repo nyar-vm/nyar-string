@@ -1,4 +1,4 @@
-use core::{mem::size_of, ptr::copy_nonoverlapping};
+use core::mem::size_of;
 use std::mem::transmute;
 
 use crate::SmartString;
@@ -9,6 +9,7 @@ pub const LENGTH_MASK: u8 = 0b11000000;
 
 /// A buffer stored on the stack whose size is equal to the stack size of `String`
 #[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct InlineBuffer([u8; MAX_SIZE]);
 
 impl InlineBuffer {
@@ -16,29 +17,8 @@ impl InlineBuffer {
     ///
     /// SAFETY:
     /// * The caller must guarantee that the length of `text` is less than [`MAX_SIZE`]
-    #[inline]
-    pub unsafe fn new(text: &str) -> Self {
-        debug_assert!(text.len() <= MAX_SIZE);
-
-        let len = text.len();
-        let mut buffer = [0u8; MAX_SIZE];
-
-        // set the length in the last byte
-        buffer[MAX_SIZE - 1] = len as u8 | LENGTH_MASK;
-
-        // copy the string into our buffer
-        //
-        // note: in the case where len == MAX_SIZE, we'll overwrite the len, but that's okay because
-        // when reading the length we can detect that the last byte is part of UTF-8 and return a
-        // length of MAX_SIZE
-        //
-        // SAFETY:
-        // * src (`text`) is valid for `len` bytes because `len` comes from `text`
-        // * dst (`buffer`) is valid for `len` bytes because we assert src is less than MAX_SIZE
-        // * src and dst don't overlap because we created dst
-        //
-        copy_nonoverlapping(text.as_ptr(), buffer.as_mut_ptr(), len);
-
+    #[inline(always)]
+    pub unsafe fn new(buffer: [u8; MAX_SIZE]) -> Self {
         InlineBuffer(buffer)
     }
 
@@ -88,14 +68,22 @@ impl InlineBuffer {
             self.0[MAX_SIZE - 1] = len as u8 | LENGTH_MASK;
         }
     }
+    pub fn get_len(&self) -> usize {
+        let len = self.0[MAX_SIZE - 1] & !LENGTH_MASK;
+        if len == MAX_SIZE as u8 { MAX_SIZE } else { len as usize }
+    }
 
     #[inline(always)]
     pub fn copy(&self) -> Self {
         InlineBuffer(self.0)
     }
 
-    #[allow(clippy::wrong_self_convention)]
-    pub unsafe fn as_smart_string(self) -> SmartString {
-        transmute::<Self, SmartString>(self)
+    pub unsafe fn as_smart_string(&self) -> SmartString {
+        transmute::<Self, SmartString>(*self)
+    }
+    pub unsafe fn as_str(&self) -> &str {
+        let len = self.get_len();
+        let ptr = self.0.as_ptr() as *const u8;
+        std::str::from_utf8_unchecked(std::slice::from_raw_parts(ptr, len))
     }
 }

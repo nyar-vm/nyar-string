@@ -1,9 +1,10 @@
-use std::hash::{Hash, Hasher};
-use std::sync::LazyLock;
+use std::{
+    hash::{Hash, Hasher},
+    sync::LazyLock,
+};
 
 use ahash::{AHasher, RandomState};
 use dashmap::DashMap;
-use dashmap::mapref::one::Ref;
 
 pub static STRING_MANAGER: LazyLock<StringManager> = LazyLock::new(|| StringManager::default());
 
@@ -16,25 +17,27 @@ pub struct StringManager {
 impl Default for StringManager {
     fn default() -> Self {
         let hasher = RandomState::default();
-        Self {
-            cache: DashMap::with_hasher(hasher),
-        }
+        Self { cache: DashMap::with_hasher(hasher) }
     }
 }
 
 impl StringManager {
-    pub fn get(&self, key: StringID) -> Option<Ref<StringID, String, RandomState>> {
-        self.cache.get(&key)
+    /// Get a reference to the string
+    pub fn get(&self, key: StringID) -> Option<&str> {
+        Some(self.cache.get(&key)?.as_ref())
     }
-    pub fn insert<S>(&self, value: S) -> StringID where S: Into<String> {
+    pub fn get_hash_key(string: &str) -> StringID {
         let mut hasher = AHasher::default();
-        let s = value.into();
-        s.hash(&mut hasher);
-        let hash = hasher.finish() as usize;
+        string.hash(&mut hasher);
+        hasher.finish() as usize
+    }
+
+    pub fn insert(&self, value: String) -> StringID {
+        let hash = Self::get_hash_key(&value);
         if self.cache.contains_key(&hash) {
             return hash;
         }
-        self.cache.insert(hash, s);
+        self.cache.insert(hash, value);
         hash
     }
     pub fn remove(&mut self, key: StringID) -> Option<String> {
