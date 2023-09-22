@@ -1,7 +1,7 @@
 [workspace]
 members = ["projects/*"]
 default-members = [
-    "projects/smart-string",
+    "projects/nyar-string",
 ]
 exclude = [
     "projects/.DS_Store",

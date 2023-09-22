@@ -11,12 +11,13 @@ pub static STRING_MANAGER: LazyLock<StringManager> = LazyLock::new(|| StringMana
 pub type StringID = usize;
 
 pub struct StringManager {
-    cache: Ra
+    cache: DashMap<StringID, String, RandomState>,
 }
 
 impl Default for StringManager {
     fn default() -> Self {
-
+        let hasher = RandomState::default();
+        Self { cache: DashMap::with_hasher(hasher) }
     }
 }
 
